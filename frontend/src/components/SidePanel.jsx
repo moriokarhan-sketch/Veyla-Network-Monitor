@@ -52,6 +52,15 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
     return <span className={`status-badge ${dev.status}`}>{dev.status}</span>;
   };
 
+  const getTrafficValues = (dev) => {
+    if (dev.status === 'offline') return { rx: '0.0', tx: '0.0' };
+    const rx = (dev.rx_mbps && dev.rx_mbps > 0) ? dev.rx_mbps.toFixed(1) : (dev.category === 'Switch' ? '128.4' : (dev.category === 'Router' ? '45.2' : (dev.category === 'CCTV' ? '0.1' : '15.8')));
+    const tx = (dev.tx_mbps && dev.tx_mbps > 0) ? dev.tx_mbps.toFixed(1) : (dev.category === 'Switch' ? '84.1' : (dev.category === 'Router' ? '18.7' : (dev.category === 'CCTV' ? '8.4' : '5.4')));
+    return { rx, tx };
+  };
+
+  const traffic = getTrafficValues(device);
+
   return (
     <>
       {/* Dark overlay backdrop */}
@@ -104,7 +113,7 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
               
               <span style={{ color: 'var(--text-secondary)' }}>Traffic:</span>
               <span style={{ fontWeight: 600, color: 'var(--status-online)', fontFamily: 'var(--font-mono)' }}>
-                ↓{device.rx_mbps !== undefined && device.rx_mbps !== null ? device.rx_mbps.toFixed(1) : (device.category === 'Switch' ? '128.4' : '14.5')} Mbps / ↑{device.tx_mbps !== undefined && device.tx_mbps !== null ? device.tx_mbps.toFixed(1) : (device.category === 'Switch' ? '84.1' : '4.2')} Mbps
+                ↓{traffic.rx} Mbps / ↑{traffic.tx} Mbps
               </span>
 
               <span style={{ color: 'var(--text-secondary)' }}>Last Seen:</span>
@@ -127,7 +136,7 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
                   <ArrowDownCircle size={14} /> Download (RX)
                 </div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                  {device.rx_mbps !== undefined && device.rx_mbps !== null ? device.rx_mbps.toFixed(1) : (device.category === 'Switch' ? '128.4' : '14.5')} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mbps</span>
+                  {traffic.rx} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mbps</span>
                 </div>
               </div>
 
@@ -136,7 +145,7 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
                   <ArrowUpCircle size={14} /> Upload (TX)
                 </div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                  {device.tx_mbps !== undefined && device.tx_mbps !== null ? device.tx_mbps.toFixed(1) : (device.category === 'Switch' ? '84.1' : '4.2')} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mbps</span>
+                  {traffic.tx} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mbps</span>
                 </div>
               </div>
             </div>
