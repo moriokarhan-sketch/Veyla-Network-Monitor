@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import { Trash2, Eye, EyeOff, Search, RefreshCw } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Search, RefreshCw, Terminal, Copy, Check } from 'lucide-react';
 
 export default function DeviceRegistry({ onRegistryChange }) {
   const [devices, setDevices] = useState([]);
@@ -47,6 +47,15 @@ export default function DeviceRegistry({ onRegistryChange }) {
     }
   };
 
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopyBeaconCommand = (device) => {
+    const cmd = api.getBeaconCommand(device.ip_address);
+    navigator.clipboard.writeText(cmd);
+    setCopiedId(device.id);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
   const filteredDevices = devices.filter(d => 
     d.name.toLowerCase().includes(search.toLowerCase()) ||
     d.ip_address.includes(search) ||
@@ -59,43 +68,45 @@ export default function DeviceRegistry({ onRegistryChange }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Device Registry</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Device Registry & Beacon Ping</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Comprehensive list of all registered IP endpoints in Veyla network.
+            Manage all monitored nodes and copy 1-liner beacon ping commands for remote clients
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={fetchDevices} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh List
-        </button>
+
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ position: 'relative', width: '260px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Search IP, name, category..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ paddingLeft: '2rem', fontSize: '0.85rem' }}
+            />
+          </div>
+
+          <button className="btn btn-secondary" onClick={fetchDevices} disabled={loading} title="Refresh Registry">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
-      <div className="glass-card" style={{ padding: '1.5rem' }}>
-        {/* Search Bar */}
-        <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
-          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            className="input-field"
-            style={{ paddingLeft: '2.5rem' }}
-            placeholder="Search by name, IP, MAC address, category or location..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      {error && (
+        <div style={{ padding: '0.75rem', backgroundColor: 'rgba(244, 63, 94, 0.15)', border: '1px solid var(--status-critical)', color: 'var(--status-critical)', borderRadius: '8px', fontSize: '0.85rem' }}>
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div style={{ padding: '1rem', color: 'var(--status-critical)', backgroundColor: 'rgba(244, 63, 94, 0.1)', borderRadius: '8px', marginBottom: '1rem' }}>
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-            Loading database registry...
+      <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+        {loading && devices.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Loading registered devices...
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
+            <table className="data-table" style={{ margin: 0 }}>
               <thead>
                 <tr>
                   <th>Device Name</th>
@@ -104,6 +115,7 @@ export default function DeviceRegistry({ onRegistryChange }) {
                   <th>Category</th>
                   <th>Location</th>
                   <th>Status</th>
+                  <th style={{ textAlign: 'center' }}>Beacon Ping (Option 1)</th>
                   <th style={{ textAlign: 'center' }}>Show on Map</th>
                   <th style={{ textAlign: 'center' }}>Actions</th>
                 </tr>
@@ -111,7 +123,7 @@ export default function DeviceRegistry({ onRegistryChange }) {
               <tbody>
                 {filteredDevices.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                    <td colSpan="9" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
                       No devices found matching search criteria.
                     </td>
                   </tr>
@@ -133,6 +145,36 @@ export default function DeviceRegistry({ onRegistryChange }) {
                         <span className={`status-badge ${device.status}`}>
                           {device.status}
                         </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleCopyBeaconCommand(device)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.35rem 0.6rem',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            border: '1px solid var(--border-color-active)',
+                            backgroundColor: copiedId === device.id ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-card)',
+                            color: copiedId === device.id ? 'var(--status-online)' : 'var(--text-primary)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          title="Copy 1-liner curl command for client machine"
+                        >
+                          {copiedId === device.id ? (
+                            <>
+                              <Check size={12} /> Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Terminal size={12} /> Copy Command
+                            </>
+                          )}
+                        </button>
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <button

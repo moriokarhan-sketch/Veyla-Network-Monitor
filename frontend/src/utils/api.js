@@ -505,5 +505,31 @@ export const api = {
       });
       return { status: "success" };
     }
+  },
+
+  async sendBeaconPing(deviceIdentifier) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/ping?device=${encodeURIComponent(deviceIdentifier)}`);
+      if (!response.ok) throw new Error("Failed to send beacon ping");
+      return await response.json();
+    } catch (error) {
+      // Mock ping
+      const target = MOCK_DEVICES.find(d => d.ip_address === deviceIdentifier || d.name === deviceIdentifier);
+      if (target) {
+        target.status = "online";
+        target.last_seen = new Date().toISOString();
+        target.last_latency = 1.2;
+      }
+      return { status: "success", device: deviceIdentifier, last_seen: new Date().toISOString() };
+    }
+  },
+
+  getBeaconCommand(deviceIpOrName) {
+    const isVercel = window.location.hostname.includes("vercel.app");
+    const baseUrl = isVercel 
+      ? window.location.origin 
+      : (API_BASE_URL.startsWith("http") ? API_BASE_URL.replace(/\/api$/, "") : "http://localhost:8000");
+    const pingUrl = `${baseUrl}/api/ping?device=${encodeURIComponent(deviceIpOrName)}`;
+    return `curl.exe -s "${pingUrl}"`;
   }
 };

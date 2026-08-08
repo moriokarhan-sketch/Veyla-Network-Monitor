@@ -222,6 +222,58 @@ def impersonate_user(user_id: int, current_user: User = Depends(require_super_ad
     log_audit(db, current_user, "ADMIN_IMPERSONATED_USER", f"Admin '{current_user.username}' simulated user '{target_user.username}'")
     return {"access_token": access_token, "token_type": "bearer"}
 
+# --- BEACON HEARTBEAT ENDPOINT (Option 1) ---
+
+@app.api_route("/api/ping", methods=["GET", "POST"])
+def beacon_ping(device: Optional[str] = None, device_id: Optional[str] = None, latency: Optional[float] = 1.0, db: Session = Depends(get_db)):
+    target = device or device_id
+    if not target:
+        raise HTTPException(status_code=400, detail="Missing 'device' parameter")
+    
+    # Match by IP address, Name, or ID
+    dev = db.query(Device).filter(
+        (Device.ip_address == target) | (Device.name == target) | (Device.id == (int(target) if target.isdigit() else -1))
+    ).first()
+
+    now = datetime.utcnow()
+    if not dev:
+        dev = Device(
+            ip_address=target if "." in target else f"10.0.0.{db.query(Device).count() + 1}",
+            name=f"Beacon Client ({target})",
+            category="PC",
+            location="Remote Site",
+            status="online",
+            last_seen=now,
+            last_latency=latency,
+            show_on_map=True
+        )
+        db.add(dev)
+        db.commit()
+        db.refresh(dev)
+    else:
+        dev.status = "online"
+        dev.last_seen = now
+        if latency:
+            dev.last_latency = latency
+        db.commit()
+        db.refresh(dev)
+
+    ping_log = PingLog(
+        device_id=dev.id,
+        status="online",
+        latency_ms=latency,
+        timestamp=now
+    )
+    db.add(ping_log)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Heartbeat received for {dev.name}",
+        "device_id": dev.id,
+        "last_seen": dev.last_seen.isoformat()
+    }
+
 # --- DEVICE ENDPOINTS ---
 
 @app.get("/api/devices", response_model=List[DeviceResponse])
