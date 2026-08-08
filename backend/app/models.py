@@ -37,6 +37,8 @@ class Device(Base):
     # Status and telemetry
     status = Column(String, default="offline", nullable=False)  # online, warning, offline
     last_latency = Column(Float, nullable=True)
+    rx_mbps = Column(Float, default=0.0, nullable=True)
+    tx_mbps = Column(Float, default=0.0, nullable=True)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -50,6 +52,8 @@ class PingLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
     latency_ms = Column(Float, nullable=True)
+    rx_mbps = Column(Float, default=0.0, nullable=True)
+    tx_mbps = Column(Float, default=0.0, nullable=True)
     status = Column(String, nullable=False)  # online, offline
     timestamp = Column(DateTime, default=datetime.utcnow)
 

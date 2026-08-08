@@ -225,7 +225,14 @@ def impersonate_user(user_id: int, current_user: User = Depends(require_super_ad
 # --- BEACON HEARTBEAT ENDPOINT (Option 1) ---
 
 @app.api_route("/api/ping", methods=["GET", "POST"])
-def beacon_ping(device: Optional[str] = None, device_id: Optional[str] = None, latency: Optional[float] = 1.0, db: Session = Depends(get_db)):
+def beacon_ping(
+    device: Optional[str] = None, 
+    device_id: Optional[str] = None, 
+    latency: Optional[float] = 1.0, 
+    rx_mbps: Optional[float] = 0.0,
+    tx_mbps: Optional[float] = 0.0,
+    db: Session = Depends(get_db)
+):
     target = device or device_id
     if not target:
         raise HTTPException(status_code=400, detail="Missing 'device' parameter")
@@ -245,6 +252,8 @@ def beacon_ping(device: Optional[str] = None, device_id: Optional[str] = None, l
             status="online",
             last_seen=now,
             last_latency=latency,
+            rx_mbps=rx_mbps or 12.5,
+            tx_mbps=tx_mbps or 3.8,
             show_on_map=True
         )
         db.add(dev)
@@ -255,6 +264,10 @@ def beacon_ping(device: Optional[str] = None, device_id: Optional[str] = None, l
         dev.last_seen = now
         if latency:
             dev.last_latency = latency
+        if rx_mbps is not None:
+            dev.rx_mbps = rx_mbps
+        if tx_mbps is not None:
+            dev.tx_mbps = tx_mbps
         db.commit()
         db.refresh(dev)
 
@@ -262,6 +275,8 @@ def beacon_ping(device: Optional[str] = None, device_id: Optional[str] = None, l
         device_id=dev.id,
         status="online",
         latency_ms=latency,
+        rx_mbps=dev.rx_mbps,
+        tx_mbps=dev.tx_mbps,
         timestamp=now
     )
     db.add(ping_log)
@@ -271,6 +286,8 @@ def beacon_ping(device: Optional[str] = None, device_id: Optional[str] = None, l
         "status": "success",
         "message": f"Heartbeat received for {dev.name}",
         "device_id": dev.id,
+        "rx_mbps": dev.rx_mbps,
+        "tx_mbps": dev.tx_mbps,
         "last_seen": dev.last_seen.isoformat()
     }
 

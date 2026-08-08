@@ -63,6 +63,8 @@ class DeviceResponse(DeviceBase):
     mute_until: Optional[datetime] = None
     status: str
     last_latency: Optional[float] = None
+    rx_mbps: Optional[float] = 0.0
+    tx_mbps: Optional[float] = 0.0
     last_seen: Optional[datetime] = None
     created_at: datetime
 
@@ -73,6 +75,8 @@ class PingLogResponse(BaseModel):
     id: int
     device_id: int
     latency_ms: Optional[float] = None
+    rx_mbps: Optional[float] = 0.0
+    tx_mbps: Optional[float] = 0.0
     status: str
     timestamp: datetime
 
