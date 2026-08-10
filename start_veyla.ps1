@@ -109,11 +109,12 @@ if (-not (Test-Path "venv")) {
         Read-Host 'Press Enter to exit...'
         exit
     }
-    
-    Write-Host '[Setup] Installing required backend packages...' -ForegroundColor Cyan
-    & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install -r "$BaseDir\backend\requirements.txt"
-    & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install pydantic-settings python-jose cryptography requests python-multipart pysnmp-lextudio
 }
+
+# 4. Always verify backend dependencies are installed
+Write-Host '[Setup] Verifying required backend packages...' -ForegroundColor Cyan
+& "$BaseDir\backend\venv\Scripts\python.exe" -m pip install -r "$BaseDir\backend\requirements.txt"
+& "$BaseDir\backend\venv\Scripts\python.exe" -m pip install pydantic-settings python-jose cryptography requests python-multipart pysnmp-lextudio
 
 # 4. Start Backend Uvicorn Server
 Write-Host 'Starting Veyla Server on Port 8000...' -ForegroundColor Green
