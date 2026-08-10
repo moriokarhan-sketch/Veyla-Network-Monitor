@@ -183,8 +183,13 @@ export const api = {
 
       return { success: true };
     } catch (error) {
-      if (error.message.includes("Failed to fetch")) {
-        // Mock fallback impersonation
+      if (
+        error.message.includes("Failed to fetch") || 
+        error.message.includes("Could not validate credentials") || 
+        error.message.includes("Impersonation request failed") ||
+        (localStorage.getItem("veyla_token") || "").startsWith("mock-token")
+      ) {
+        // Mock fallback impersonation for standalone Vercel preview
         localStorage.setItem("veyla_original_token", localStorage.getItem("veyla_token") || "mock-token-admin");
         localStorage.setItem("veyla_original_user", localStorage.getItem("veyla_user") || "admin");
         localStorage.setItem("veyla_original_role", localStorage.getItem("veyla_role") || "super_admin");
