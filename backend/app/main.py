@@ -11,8 +11,10 @@ if sys.platform.lower().startswith("win"):
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
+import os
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -496,6 +498,11 @@ def add_batch_devices(devices_in: List[BatchDeviceItem], current_user: User = De
     db.commit()
     log_audit(db, current_user, "BATCH_DEVICES_SAVED", f"Processed and saved batch of {len(devices_in)} devices.")
     return {"status": "success", "message": f"Processed {len(devices_in)} devices successfully."}
+
+# Mount built frontend SPA static files if available
+dist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist"))
+if os.path.exists(dist_dir):
+    app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
