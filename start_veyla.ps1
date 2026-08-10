@@ -7,15 +7,23 @@ Write-Host "========================================================" -Foregroun
 $BaseDir = $PSScriptRoot
 Set-Location "$BaseDir\backend"
 
-# 1. Force remove old invalid venv if it failed to create python.exe
+# 1. Force remove old developer venv if copied from another PC
 if (Test-Path "venv") {
-    if (-not (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
-        Write-Host "[Fix] Removing incomplete virtualenv..." -ForegroundColor Yellow
+    $cfgFile = "$BaseDir\backend\venv\pyvenv.cfg"
+    $isInvalid = $true
+    if (Test-Path $cfgFile) {
+        $cfgText = Get-Content $cfgFile -Raw
+        if ($cfgText -notlike "*boboh*" -and (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
+            $isInvalid = $false
+        }
+    }
+    if ($isInvalid) {
+        Write-Host "[Fix] Purging old virtualenv copied from developer PC..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force "venv" -ErrorAction SilentlyContinue
     }
 }
 
-# 2. Locate REAL Python executable (Excluding fake WindowsApps stub!)
+# 2. Locate REAL Python executable (Excluding Microsoft Store fake stub)
 $PythonExe = $null
 
 # Check py launcher first
@@ -53,26 +61,45 @@ if (-not $PythonExe) {
     }
 }
 
+# 3. If Python is still missing, offer 1-click Auto Install
 if (-not $PythonExe) {
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Red
     Write-Host "  [ERROR] Real Python is NOT installed on this Server!" -ForegroundColor Red
     Write-Host "========================================================" -ForegroundColor Red
     Write-Host ""
-    Write-Host "The 'python' found was Microsoft Store empty stub." -ForegroundColor Yellow
-    Write-Host "Please download REAL Python from:" -ForegroundColor Yellow
-    Write-Host "  👉 https://www.python.org/downloads/" -ForegroundColor Cyan
+    Write-Host "The system detected an empty Windows Store placeholder." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "* IMPORTANT during installation:" -ForegroundColor Yellow
-    Write-Host "  Check the box '[✓] Add Python.exe to PATH' at bottom!" -ForegroundColor Yellow
-    Write-Host ""
-    Read-Host "Press Enter to exit..."
-    exit
+    $ans = Read-Host "Would you like to Auto-Download & Install Python 3.12 now? (Y/N)"
+    if ($ans -eq 'Y' -or $ans -eq 'y') {
+        Write-Host "Downloading Python 3.12 Installer from python.org..." -ForegroundColor Cyan
+        $installerPath = "$env:TEMP\python-installer.exe"
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe" -OutFile $installerPath
+            Write-Host "Installing Python 3.12 with PATH enabled..." -ForegroundColor Green
+            Start-Process $installerPath -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1" -Wait
+            Write-Host "[OK] Python 3.12 installed successfully!" -ForegroundColor Green
+            $PythonExe = "C:\Program Files\Python312\python.exe"
+        } catch {
+            Write-Host "[ERROR] Auto download failed. Please download Python manually from:" -ForegroundColor Red
+            Write-Host "  👉 https://www.python.org/downloads/" -ForegroundColor Cyan
+            Write-Host "* IMPORTANT: Check the box '[✓] Add Python.exe to PATH'" -ForegroundColor Yellow
+            Read-Host "Press Enter to exit..."
+            exit
+        }
+    } else {
+        Write-Host "Please download and install Python manually from:" -ForegroundColor Yellow
+        Write-Host "  👉 https://www.python.org/downloads/" -ForegroundColor Cyan
+        Write-Host "* IMPORTANT: Check the box '[✓] Add Python.exe to PATH'" -ForegroundColor Yellow
+        Read-Host "Press Enter to exit..."
+        exit
+    }
 }
 
 Write-Host "[OK] Located Real Python: $PythonExe" -ForegroundColor Green
 
-# 3. Create fresh venv if missing
+# 4. Create fresh venv on Server if missing
 if (-not (Test-Path "venv")) {
     Write-Host "[Setup] Creating fresh Python virtual environment on Server..." -ForegroundColor Cyan
     if ($PythonExe -eq "py -3") {
@@ -91,14 +118,14 @@ if (-not (Test-Path "venv")) {
     & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install fastapi uvicorn sqlalchemy pydantic pyjwt passlib bcrypt
 }
 
-# 4. Start Backend Uvicorn Server
+# 5. Start Backend Uvicorn Server
 Write-Host "Starting Veyla Server on Port 8000..." -ForegroundColor Green
 $venvPython = "$BaseDir\backend\venv\Scripts\python.exe"
 Start-Process powershell -ArgumentList "-NoExit -Command `"Set-Location '$BaseDir\backend'; & '$venvPython' -m uvicorn app.main:app --host 0.0.0.0 --port 8000`""
 
 Start-Sleep -Seconds 4
 
-# 5. Open Web Panel
+# 6. Open Web Panel
 Write-Host "Opening Veyla Web Panel at http://localhost:8000 ..." -ForegroundColor Cyan
 Start-Process "http://localhost:8000"
 
