@@ -500,9 +500,37 @@ def add_batch_devices(devices_in: List[BatchDeviceItem], current_user: User = De
     return {"status": "success", "message": f"Processed {len(devices_in)} devices successfully."}
 
 # Mount built frontend SPA static files if available
-dist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist"))
-if os.path.exists(dist_dir):
-    app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
+from fastapi.responses import HTMLResponse
+
+possible_dist_dirs = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../frontend/dist")),
+    os.path.abspath("frontend/dist"),
+    os.path.abspath("../frontend/dist"),
+    os.path.abspath("dist")
+]
+
+mounted = False
+for d_dir in possible_dist_dirs:
+    if os.path.exists(d_dir) and os.path.exists(os.path.join(d_dir, "index.html")):
+        app.mount("/", StaticFiles(directory=d_dir, html=True), name="static")
+        logger.info(f"Mounted static frontend from {d_dir}")
+        mounted = True
+        break
+
+if not mounted:
+    @app.get("/", response_class=HTMLResponse)
+    def root_status():
+        return """
+        <html>
+            <head><title>Veyla Network Monitor API</title></head>
+            <body style="font-family: sans-serif; background: #090d16; color: #f8fafc; text-align: center; padding: 3rem;">
+                <h1 style="color: #10b981;">⚡ Veyla Network Monitoring Server is ONLINE!</h1>
+                <p style="color: #94a3b8;">Backend API Service is active and polling ICMP/SNMP devices.</p>
+                <p>API Endpoint: <a href="/api/devices" style="color: #3b82f6;">/api/devices</a></p>
+            </body>
+        </html>
+        """
 
 if __name__ == "__main__":
     import uvicorn

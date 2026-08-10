@@ -17,8 +17,8 @@ backend/app/__pycache__/
 *.sqlite3
 backend/veyla_monitor.db
 
-# Frontend build output
-frontend/dist/
+# Frontend build output (dist included for standalone server deployments)
+!frontend/dist/
 frontend/dist-ssr/
 *.local
 
