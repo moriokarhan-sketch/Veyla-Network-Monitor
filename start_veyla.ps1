@@ -7,48 +7,86 @@ Write-Host "========================================================" -Foregroun
 $BaseDir = $PSScriptRoot
 Set-Location "$BaseDir\backend"
 
-# 1. Force remove old developer venv if copied from another PC
+# 1. Force remove old invalid venv if it failed to create python.exe
 if (Test-Path "venv") {
-    $cfgFile = "$BaseDir\backend\venv\pyvenv.cfg"
-    $isInvalid = $true
-    if (Test-Path $cfgFile) {
-        $cfgText = Get-Content $cfgFile -Raw
-        if ($cfgText -notlike "*boboh*" -and (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
-            $isInvalid = $false
-        }
-    }
-    if ($isInvalid) {
-        Write-Host "[Fix] Removing invalid virtualenv copied from developer PC..." -ForegroundColor Yellow
+    if (-not (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
+        Write-Host "[Fix] Removing incomplete virtualenv..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force "venv" -ErrorAction SilentlyContinue
     }
 }
 
-# 2. Detect Python
-$PythonExe = (Get-Command python -ErrorAction SilentlyContinue).Source
-if (-not $PythonExe) {
-    $PythonExe = (Get-Command py -ErrorAction SilentlyContinue).Source
+# 2. Locate REAL Python executable (Excluding fake WindowsApps stub!)
+$PythonExe = $null
+
+# Check py launcher first
+$pyCmd = (Get-Command py -ErrorAction SilentlyContinue).Source
+if ($pyCmd) {
+    $PythonExe = "py -3"
 }
+
+# Check real python.exe in PATH (excluding WindowsApps stub)
 if (-not $PythonExe) {
-    if (Test-Path "C:\Program Files\Python312\python.exe") { $PythonExe = "C:\Program Files\Python312\python.exe" }
-    elseif (Test-Path "C:\Program Files\Python311\python.exe") { $PythonExe = "C:\Program Files\Python311\python.exe" }
-    elseif (Test-Path "C:\Program Files\Python310\python.exe") { $PythonExe = "C:\Program Files\Python310\python.exe" }
-    elseif (Test-Path "C:\Python312\python.exe") { $PythonExe = "C:\Python312\python.exe" }
+    $pathPy = Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "*WindowsApps*" }
+    if ($pathPy) {
+        $PythonExe = $pathPy.Source
+    }
+}
+
+# Check standard installation directories
+if (-not $PythonExe) {
+    $searchPaths = @(
+        "$env:LocalAppData\Programs\Python\Python312\python.exe",
+        "$env:LocalAppData\Programs\Python\Python311\python.exe",
+        "$env:LocalAppData\Programs\Python\Python310\python.exe",
+        "C:\Program Files\Python312\python.exe",
+        "C:\Program Files\Python311\python.exe",
+        "C:\Program Files\Python310\python.exe",
+        "C:\Python312\python.exe",
+        "C:\Python311\python.exe",
+        "C:\Python310\python.exe"
+    )
+    foreach ($p in $searchPaths) {
+        if (Test-Path $p) {
+            $PythonExe = "`"$p`""
+            break
+        }
+    }
 }
 
 if (-not $PythonExe) {
-    Write-Host "[ERROR] Python is not installed on this Server!" -ForegroundColor Red
-    Write-Host "Please download Python from: https://www.python.org/downloads/" -ForegroundColor Yellow
-    Write-Host "IMPORTANT: Check 'Add Python.exe to PATH' during install!" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Red
+    Write-Host "  [ERROR] Real Python is NOT installed on this Server!" -ForegroundColor Red
+    Write-Host "========================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "The 'python' found was Microsoft Store empty stub." -ForegroundColor Yellow
+    Write-Host "Please download REAL Python from:" -ForegroundColor Yellow
+    Write-Host "  👉 https://www.python.org/downloads/" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "* IMPORTANT during installation:" -ForegroundColor Yellow
+    Write-Host "  Check the box '[✓] Add Python.exe to PATH' at bottom!" -ForegroundColor Yellow
+    Write-Host ""
     Read-Host "Press Enter to exit..."
     exit
 }
 
-Write-Host "[OK] Located Python: $PythonExe" -ForegroundColor Green
+Write-Host "[OK] Located Real Python: $PythonExe" -ForegroundColor Green
 
 # 3. Create fresh venv if missing
 if (-not (Test-Path "venv")) {
     Write-Host "[Setup] Creating fresh Python virtual environment on Server..." -ForegroundColor Cyan
-    & $PythonExe -m venv venv
+    if ($PythonExe -eq "py -3") {
+        py -3 -m venv venv
+    } else {
+        Invoke-Expression "$PythonExe -m venv venv"
+    }
+    
+    if (-not (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
+        Write-Host "[ERROR] Failed to create virtual environment." -ForegroundColor Red
+        Read-Host "Press Enter to exit..."
+        exit
+    }
+    
     Write-Host "[Setup] Installing required packages (FastAPI, Uvicorn, SQLAlchemy)..." -ForegroundColor Cyan
     & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install fastapi uvicorn sqlalchemy pydantic pyjwt passlib bcrypt
 }
