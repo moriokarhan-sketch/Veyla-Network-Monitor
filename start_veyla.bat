@@ -17,14 +17,17 @@ if !errorlevel! equ 0 (
 )
 
 if "!PY_EXE!"=="" (
-    python --version 2>&1 | findstr /i "Python 3" >nul
+    python --version >nul 2>nul
     if !errorlevel! equ 0 set "PY_EXE=python"
 )
 
 if "!PY_EXE!"=="" (
-    for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*" "C:\Program Files\Python3*" "C:\Python3*") do (
-        if exist "%%D\python.exe" set "PY_EXE=%%D\python.exe"
-    )
+    if exist "C:\Program Files\Python312\python.exe" set "PY_EXE=C:\Program Files\Python312\python.exe"
+    if exist "C:\Program Files\Python311\python.exe" set "PY_EXE=C:\Program Files\Python311\python.exe"
+    if exist "C:\Program Files\Python310\python.exe" set "PY_EXE=C:\Program Files\Python310\python.exe"
+    if exist "C:\Python312\python.exe" set "PY_EXE=C:\Python312\python.exe"
+    if exist "C:\Python311\python.exe" set "PY_EXE=C:\Python311\python.exe"
+    if exist "C:\Python310\python.exe" set "PY_EXE=C:\Python310\python.exe"
 )
 
 if "!PY_EXE!"=="" (
