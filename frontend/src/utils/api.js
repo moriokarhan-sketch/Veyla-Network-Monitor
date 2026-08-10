@@ -249,12 +249,19 @@ export const api = {
       }
       return await response.json();
     } catch (error) {
-      if (error.message.includes("Failed to fetch") || error.message.includes("Backend unavailable")) {
-        // Mock add
+      if (
+        error.message.includes("Failed to fetch") || 
+        error.message.includes("Backend unavailable") ||
+        error.message.includes("Could not validate credentials") ||
+        (localStorage.getItem("veyla_token") || "").startsWith("mock-token")
+      ) {
+        // Mock add for standalone Vercel preview
         const newDevice = {
           ...device,
-          id: Math.max(...MOCK_DEVICES.map(d => d.id)) + 1,
+          id: Math.max(...MOCK_DEVICES.map(d => d.id), 0) + 1,
           status: "online",
+          rx_mbps: 15.8,
+          tx_mbps: 5.4,
           created_at: new Date().toISOString(),
           show_on_map: true
         };
