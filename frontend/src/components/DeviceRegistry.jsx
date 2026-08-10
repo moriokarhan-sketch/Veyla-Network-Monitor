@@ -57,10 +57,10 @@ export default function DeviceRegistry({ onRegistryChange }) {
   };
 
   const filteredDevices = devices.filter(d => 
-    d.name.toLowerCase().includes(search.toLowerCase()) ||
-    d.ip_address.includes(search) ||
+    (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (d.ip_address || '').includes(search) ||
     (d.mac_address && d.mac_address.toLowerCase().includes(search.toLowerCase())) ||
-    d.category.toLowerCase().includes(search.toLowerCase()) ||
+    (d.category || '').toLowerCase().includes(search.toLowerCase()) ||
     (d.location && d.location.toLowerCase().includes(search.toLowerCase()))
   );
 

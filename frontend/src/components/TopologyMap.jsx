@@ -17,24 +17,21 @@ export default function TopologyMap({ devices, onNodeClick }) {
   // Logical layout engine for fixed size canvas of 1000 x 500
   const layout = useMemo(() => {
     // 1. Identify router (or fallback to gateway 192.168.1.1)
-    const router = devices.find(d => d.category.toLowerCase() === 'router') || 
+    const router = devices.find(d => (d.category || '').toLowerCase() === 'router') || 
                    devices.find(d => d.ip_address === '192.168.1.1') || 
                    { id: 'router', name: 'Gateway', ip_address: '192.168.1.1', category: 'Router', status: 'offline' };
 
     // 2. Identify switches
-    const switches = devices.filter(d => d.category.toLowerCase() === 'switch');
+    const switches = devices.filter(d => (d.category || '').toLowerCase() === 'switch');
     if (switches.length === 0) {
       // Create a virtual switch if none present
       switches.push({ id: 'v-switch', name: 'Core Switch', ip_address: '192.168.1.2', category: 'Switch', status: 'online' });
     }
 
     // 3. Categorize other nodes under appropriate parent switches
-    // In this pub subnet: 
-    // - CCTVs belong to a CCTV switch or right side
-    // - POS, Printer, PC, KDS belong to Core Switch or left side
     const endNodes = devices.filter(d => 
-      d.category.toLowerCase() !== 'router' && 
-      d.category.toLowerCase() !== 'switch' &&
+      (d.category || '').toLowerCase() !== 'router' && 
+      (d.category || '').toLowerCase() !== 'switch' &&
       d.ip_address !== '192.168.1.1'
     );
 
@@ -85,9 +82,10 @@ export default function TopologyMap({ devices, onNodeClick }) {
     endNodes.forEach((node, idx) => {
       // Find parent switch
       let parentSwitch = switchNodes[0];
-      if (node.category.toLowerCase() === 'cctv' && switchNodes.length > 1) {
+      const cat = (node.category || '').toLowerCase();
+      if (cat === 'cctv' && switchNodes.length > 1) {
         parentSwitch = switchNodes[1]; // Use second switch for CCTV if available
-      } else if (node.category.toLowerCase() === 'cctv' && switches[0].name.toLowerCase().includes('poe')) {
+      } else if (cat === 'cctv' && (switches[0].name || '').toLowerCase().includes('poe')) {
         parentSwitch = switchNodes[0];
       }
 
@@ -105,7 +103,6 @@ export default function TopologyMap({ devices, onNodeClick }) {
 
       // Determine Icon
       let icon = HelpCircle;
-      const cat = node.category.toLowerCase();
       if (cat.includes('pos')) icon = Tv;
       else if (cat.includes('cctv')) icon = Camera;
       else if (cat.includes('printer')) icon = Printer;
