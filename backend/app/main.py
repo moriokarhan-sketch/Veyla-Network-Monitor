@@ -441,11 +441,18 @@ async def trigger_subnet_scan(current_user: User = Depends(require_admin), db: S
         discovered_list = []
         for dev in results:
             ip = dev["ip_address"]
+            scanned_mac = dev.get("mac_address", "unknown")
             if ip in existing_ips:
                 existing_device = existing_ips[ip]
+                # Automatically update dummy sample MAC with real scanned ARP MAC address
+                if scanned_mac and scanned_mac != "unknown":
+                    if not existing_device.mac_address or existing_device.mac_address in ["00:11:22:33:44:55", "00:11:22:33:aa:bb", "cc:cc:cc:11:22:33"] or existing_device.mac_address.startswith("00:11:22"):
+                        existing_device.mac_address = scanned_mac
+                        db.commit()
+                
                 discovered_list.append({
                     "ip_address": ip,
-                    "mac_address": existing_device.mac_address or dev["mac_address"],
+                    "mac_address": existing_device.mac_address or scanned_mac,
                     "name": existing_device.name,
                     "category": existing_device.category,
                     "location": existing_device.location or "Unknown",
@@ -455,7 +462,7 @@ async def trigger_subnet_scan(current_user: User = Depends(require_admin), db: S
             else:
                 discovered_list.append({
                     "ip_address": ip,
-                    "mac_address": dev["mac_address"],
+                    "mac_address": scanned_mac,
                     "name": dev["name"],
                     "category": dev["category"],
                     "location": "Unknown",
