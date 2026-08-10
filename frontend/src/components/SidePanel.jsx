@@ -53,10 +53,12 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
   };
 
   const getTrafficValues = (dev) => {
-    if (dev.status === 'offline') return { rx: '0.0', tx: '0.0' };
-    const rx = (dev.rx_mbps && dev.rx_mbps > 0) ? dev.rx_mbps.toFixed(1) : (dev.category === 'Switch' ? '128.4' : (dev.category === 'Router' ? '45.2' : (dev.category === 'CCTV' ? '0.1' : '15.8')));
-    const tx = (dev.tx_mbps && dev.tx_mbps > 0) ? dev.tx_mbps.toFixed(1) : (dev.category === 'Switch' ? '84.1' : (dev.category === 'Router' ? '18.7' : (dev.category === 'CCTV' ? '8.4' : '5.4')));
-    return { rx, tx };
+    if (!dev || dev.status === 'offline') return { rx: '0.0', tx: '0.0' };
+    const rawRx = dev.rx_mbps;
+    const rawTx = dev.tx_mbps;
+    const rxNum = (typeof rawRx === 'number' && !isNaN(rawRx) && rawRx > 0) ? rawRx : (dev.category === 'Switch' ? 128.4 : (dev.category === 'Router' ? 45.2 : (dev.category === 'CCTV' ? 0.1 : 15.8)));
+    const txNum = (typeof rawTx === 'number' && !isNaN(rawTx) && rawTx > 0) ? rawTx : (dev.category === 'Switch' ? 84.1 : (dev.category === 'Router' ? 18.7 : (dev.category === 'CCTV' ? 8.4 : 5.4)));
+    return { rx: rxNum.toFixed(1), tx: txNum.toFixed(1) };
   };
 
   const traffic = getTrafficValues(device);
@@ -219,32 +221,32 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
               <div className="chart-container">
                 <div className="chart-bars">
                   {pingLogs.map((log, index) => {
-                    // Compute height percentage based on latency max 150ms
-                    const val = log.latency_ms;
                     const isOffline = log.status === 'offline';
-                    const heightPercent = isOffline 
+                    const rawVal = log.latency_ms;
+                    const val = (typeof rawVal === 'number' && !isNaN(rawVal)) ? rawVal : null;
+                    const heightPercent = isOffline || val === null
                       ? 100 
-                      : Math.min(100, (val / 150) * 100);
+                      : Math.min(100, Math.max(10, (val / 150) * 100));
                       
                     return (
                       <div key={index} className="chart-bar-wrapper">
                         <div 
-                          className={`chart-bar ${isOffline ? 'offline' : ''}`}
+                          className={`chart-bar ${isOffline || val === null ? 'offline' : ''}`}
                           style={{ height: `${heightPercent}%` }}
                         />
                         <div className="chart-tooltip">
-                          {isOffline 
+                          {isOffline || val === null 
                             ? 'Offline' 
                             : `${val.toFixed(1)}ms`}
                           <br />
-                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                         </div>
                       </div>
                     );
                   })}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  <span>{new Date(pingLogs[0]?.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>{pingLogs[0]?.timestamp ? new Date(pingLogs[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '12:00 AM'}</span>
                   <span>Latency Limit: 150ms</span>
                   <span>Now</span>
                 </div>

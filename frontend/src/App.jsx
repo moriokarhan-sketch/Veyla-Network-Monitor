@@ -21,7 +21,53 @@ import {
   Database
 } from 'lucide-react';
 
-export default function App() {
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("React Component Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#090d16', color: '#f8fafc', padding: '2rem', textAlign: 'center' }}>
+          <h2 style={{ fontSize: '1.5rem', color: '#f43f5e', marginBottom: '1rem' }}>⚠️ Application Error Detected</h2>
+          <p style={{ color: '#94a3b8', marginBottom: '1.5rem', maxWidth: '500px' }}>
+            A component error occurred while rendering. We have safely caught it to prevent a blank screen.
+          </p>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [theme, setTheme] = useState('dark');
   const [currentView, setCurrentView] = useState('dashboard'); // dashboard | logs | settings
