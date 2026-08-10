@@ -8,9 +8,26 @@ echo ========================================================
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%backend"
 
-:: 1. Verify Python Installation
-python --version >nul 2>nul
-if !errorlevel! neq 0 (
+:: 1. Auto-detect Python Executable (py -3, python, or AppData/ProgramFiles)
+set "PY_EXE="
+
+py -3 --version >nul 2>nul
+if !errorlevel! equ 0 (
+    set "PY_EXE=py -3"
+)
+
+if "!PY_EXE!"=="" (
+    python --version 2>&1 | findstr /i "Python 3" >nul
+    if !errorlevel! equ 0 set "PY_EXE=python"
+)
+
+if "!PY_EXE!"=="" (
+    for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*" "C:\Program Files\Python3*" "C:\Python3*") do (
+        if exist "%%D\python.exe" set "PY_EXE=%%D\python.exe"
+    )
+)
+
+if "!PY_EXE!"=="" (
     echo.
     echo ========================================================
     echo   [ERROR] Python is NOT installed on this Server!
@@ -20,18 +37,16 @@ if !errorlevel! neq 0 (
     echo https://www.python.org/downloads/
     echo.
     echo * IMPORTANT: Check the box "Add Python.exe to PATH"
-    echo   during installation!
     echo.
-    echo ========================================================
     pause
     exit /b 1
 )
 
-echo [OK] Python is detected on this computer.
+echo [OK] Located Python: !PY_EXE!
 
 :: 2. Clean invalid venv if copied from another PC
 if exist "venv" (
-    "%BASE_DIR%backend\venv\Scripts\python.exe" --version >nul 2>nul
+    ".\venv\Scripts\python.exe" --version >nul 2>nul
     if !errorlevel! neq 0 (
         echo [Fix] Removing virtual environment copied from another PC...
         rmdir /s /q "venv"
@@ -40,8 +55,8 @@ if exist "venv" (
 
 :: 3. Create fresh venv and install packages if needed
 if not exist "venv" (
-    echo [Setup] Creating fresh Python virtual environment on this Server...
-    python -m venv venv
+    echo [Setup] Creating fresh Python virtual environment...
+    !PY_EXE! -m venv venv
     if !errorlevel! neq 0 (
         echo [ERROR] Failed to create Python virtual environment.
         pause

@@ -9,33 +9,56 @@ echo.
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%backend"
 
-echo [Step 1] Checking Python installation...
-python --version
-if !errorlevel! neq 0 (
+:: 1. Auto-detect Python Executable (py -3, python, or AppData/ProgramFiles)
+set "PY_EXE="
+
+py -3 --version >nul 2>nul
+if !errorlevel! equ 0 (
+    set "PY_EXE=py -3"
+)
+
+if "!PY_EXE!"=="" (
+    python --version 2>&1 | findstr /i "Python 3" >nul
+    if !errorlevel! equ 0 set "PY_EXE=python"
+)
+
+if "!PY_EXE!"=="" (
+    for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*" "C:\Program Files\Python3*" "C:\Python3*") do (
+        if exist "%%D\python.exe" set "PY_EXE=%%D\python.exe"
+    )
+)
+
+if "!PY_EXE!"=="" (
     echo.
-    echo [ERROR] 'python' command is not recognized in Windows CMD!
+    echo ========================================================
+    echo   [ERROR] Python is NOT installed on this Server!
+    echo ========================================================
     echo.
-    echo Solution:
-    echo 1. Please RESTART your computer once after installing Python.
-    echo 2. Or ensure 'Add Python.exe to PATH' was checked during Python setup.
+    echo Please download and install Python (3.10 or newer) from:
+    echo https://www.python.org/downloads/
+    echo.
+    echo * IMPORTANT: Check the box "Add Python.exe to PATH"
     echo.
     pause
     exit /b 1
 )
 
+echo [OK] Located Python: !PY_EXE!
+!PY_EXE! --version
+
 echo.
-echo [Step 2] Checking virtual environment...
+echo [Step 2] Testing/Setting up Virtual Environment...
 if exist "venv" (
     ".\venv\Scripts\python.exe" --version >nul 2>nul
     if !errorlevel! neq 0 (
-        echo [Fix] Cleaning old venv directory...
+        echo [Fix] Removing old venv copied from another PC...
         rmdir /s /q "venv"
     )
 )
 
 if not exist "venv" (
     echo [Fix] Creating fresh venv environment...
-    python -m venv venv
+    !PY_EXE! -m venv venv
     if !errorlevel! neq 0 (
         echo [ERROR] Could not create venv environment.
         pause
@@ -44,7 +67,7 @@ if not exist "venv" (
 )
 
 echo.
-echo [Step 3] Installing backend packages...
+echo [Step 3] Installing backend dependencies...
 call .\venv\Scripts\activate.bat
 pip install fastapi uvicorn sqlalchemy pydantic pyjwt passlib bcrypt
 
