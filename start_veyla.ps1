@@ -111,7 +111,8 @@ if (-not (Test-Path "venv")) {
     }
     
     Write-Host '[Setup] Installing required backend packages...' -ForegroundColor Cyan
-    & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install fastapi uvicorn sqlalchemy pydantic pyjwt passlib bcrypt
+    & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install -r "$BaseDir\backend\requirements.txt"
+    & "$BaseDir\backend\venv\Scripts\python.exe" -m pip install pydantic-settings python-jose cryptography requests python-multipart pysnmp-lextudio
 }
 
 # 4. Start Backend Uvicorn Server
