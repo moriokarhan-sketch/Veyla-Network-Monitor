@@ -48,12 +48,20 @@ export default function DeviceRegistry({ onRegistryChange }) {
   };
 
   const [copiedId, setCopiedId] = useState(null);
+  const copyTimeoutRef = React.useRef(null);
 
-  const handleCopyBeaconCommand = (device) => {
+  const handleCopyBeaconCommand = async (device) => {
     const cmd = api.getBeaconCommand(device.ip_address);
-    navigator.clipboard.writeText(cmd);
-    setCopiedId(device.id);
-    setTimeout(() => setCopiedId(null), 2500);
+    try {
+      await navigator.clipboard.writeText(cmd);
+      // Bug fix: Clear any previous timeout to avoid stale "Copied!" state on rapid clicks
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      setCopiedId(device.id);
+      copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2500);
+    } catch (err) {
+      // Clipboard write failed (non-HTTPS or permission denied) — fallback alert
+      alert('Copy failed. Please copy manually:\n\n' + cmd);
+    }
   };
 
   const filteredDevices = devices.filter(d => 

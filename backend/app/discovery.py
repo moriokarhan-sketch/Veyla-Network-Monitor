@@ -11,7 +11,8 @@ def check_ip_online_sync(ip: str, is_windows: bool) -> bool:
     else:
         cmd = ["ping", "-c", "1", "-W", "1", ip]
     try:
-        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=0.8)
+        # Bug 8 fix: Increased timeout to 1.5s to account for process startup overhead
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
         return res.returncode == 0
     except Exception:
         return False
@@ -34,12 +35,12 @@ def get_mac_from_arp(ip: str) -> Optional[str]:
     try:
         is_windows = sys.platform.lower().startswith("win")
         if is_windows:
-            output = subprocess.check_output(["arp", "-a", ip], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+            output = subprocess.check_output(["arp", "-a", ip], stderr=subprocess.DEVNULL, timeout=2.0).decode("utf-8", errors="ignore")
             match = re.search(r"([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}", output)
             if match:
                 return match.group(0).replace("-", ":").lower()
         else:
-            output = subprocess.check_output(["arp", "-n", ip], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+            output = subprocess.check_output(["arp", "-n", ip], stderr=subprocess.DEVNULL, timeout=2.0).decode("utf-8", errors="ignore")
             match = re.search(r"([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", output)
             if match:
                 return match.group(0).lower()
@@ -85,7 +86,6 @@ async def profile_device(ip: str, mac: str) -> Dict[str, str]:
             "ac1f6b": "Apple",
             "d4619d": "Apple",
             "002590": "Supermicro",
-            "ac1f6b": "Intel",
             "a4fc77": "Intel",
         }
         vendor = vendors.get(oui, "Generic Brand")
@@ -138,11 +138,35 @@ async def profile_device(ip: str, mac: str) -> Dict[str, str]:
         "category": category
     }
 
-async def run_discovery_scan(subnet_prefix: str = "192.168.1") -> List[Dict[str, str]]:
+def detect_local_subnet() -> str:
+    """
+    Auto-detects the local machine's subnet prefix for scanning.
+    Falls back to 192.168.1 if detection fails.
+    """
+    try:
+        # Connect to a public IP to get our local IP without sending data
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        # Return just the first 3 octets as prefix
+        parts = local_ip.split(".")
+        if len(parts) == 4:
+            return f"{parts[0]}.{parts[1]}.{parts[2]}"
+    except Exception:
+        pass
+    return "192.168.1"
+
+async def run_discovery_scan(subnet_prefix: str = "") -> List[Dict[str, str]]:
     """
     Runs a discovery scan on a subnet prefix.
-    Resolves MAC addresses and profiles device type using ports/DNS.
+    Bug 9 fix: Auto-detects local subnet if no prefix provided.
+    Bug 1 fix: Single ARP lookup per IP, passed to profile_device directly.
     """
+    # Auto-detect subnet if not explicitly specified
+    if not subnet_prefix:
+        subnet_prefix = detect_local_subnet()
+    
     semaphore = asyncio.Semaphore(50)  # Limit concurrent pings
     tasks = []
     
@@ -157,18 +181,23 @@ async def run_discovery_scan(subnet_prefix: str = "192.168.1") -> List[Dict[str,
     for r in results:
         if r and r["online"]:
             online_ips.append(r["ip"])
+    
+    # Bug 1 fix: Look up MAC once per IP and reuse it
+    ip_mac_map = {}
+    for ip in online_ips:
+        ip_mac_map[ip] = get_mac_from_arp(ip)
             
-    # For each online device, resolve MAC and profile device concurrently
+    # For each online device, profile device concurrently using pre-fetched MAC
     profile_tasks = []
     for ip in online_ips:
-        mac = get_mac_from_arp(ip)
+        mac = ip_mac_map.get(ip)
         profile_tasks.append(profile_device(ip, mac if mac else "unknown"))
         
     profiles = await asyncio.gather(*profile_tasks)
     
     discovered_devices = []
     for ip, profile in zip(online_ips, profiles):
-        mac = get_mac_from_arp(ip)
+        mac = ip_mac_map.get(ip)
         discovered_devices.append({
             "ip_address": ip,
             "mac_address": mac if mac else "unknown",

@@ -44,10 +44,21 @@ export const api = {
       const data = await response.json();
       localStorage.setItem("veyla_token", data.access_token);
       localStorage.setItem("veyla_user", username);
-      // Decode simple token role
+      
+      // Bug 6 fix: Decode JWT payload to get real role from backend
+      // JWT payload is base64url-encoded in the second segment (header.payload.signature)
       let role = "viewer";
-      if (username.includes("admin")) role = "admin";
-      if (username === "admin") role = "super_admin";
+      try {
+        const payloadBase64 = data.access_token.split(".")[1];
+        // Pad base64 string if needed
+        const padded = payloadBase64 + "=".repeat((4 - payloadBase64.length % 4) % 4);
+        const payload = JSON.parse(atob(padded));
+        if (payload.role) role = payload.role;
+      } catch (e) {
+        // Fallback: guess from username if JWT decode fails
+        if (username.includes("admin")) role = "admin";
+        if (username === "admin") role = "super_admin";
+      }
       localStorage.setItem("veyla_role", role);
       
       return { success: true, username, role };

@@ -30,7 +30,7 @@ from app.auth import (
     require_viewer, require_admin, require_super_admin
 )
 from app.monitoring import monitoring_daemon_loop, fetch_snmp_telemetry, poll_device
-from app.discovery import run_discovery_scan
+from app.discovery import run_discovery_scan, detect_local_subnet
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -425,14 +425,50 @@ class BatchDeviceItem(BaseModel):
     location: Optional[str] = None
     show_on_map: bool
 
+# Bug 3 fix: /api/devices/batch MUST be registered BEFORE /api/devices/{device_id}
+# otherwise FastAPI matches "batch" as the device_id integer and crashes
+@app.post("/api/devices/batch")
+def add_batch_devices(devices_in: List[BatchDeviceItem], current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """
+    Registers or updates a batch of devices from discovery scan selections.
+    """
+    for item in devices_in:
+        device = db.query(Device).filter(Device.ip_address == item.ip_address).first()
+        if device:
+            device.name = item.name
+            device.category = item.category
+            device.location = item.location or "Unknown"
+            device.show_on_map = item.show_on_map
+            if item.mac_address and item.mac_address != "unknown":
+                device.mac_address = item.mac_address
+        else:
+            new_device = Device(
+                ip_address=item.ip_address,
+                mac_address=item.mac_address,
+                name=item.name,
+                category=item.category,
+                location=item.location or "Unknown",
+                show_on_map=item.show_on_map,
+                status="online"
+            )
+            db.add(new_device)
+            
+    db.commit()
+    log_audit(db, current_user, "BATCH_DEVICES_SAVED", f"Processed and saved batch of {len(devices_in)} devices.")
+    return {"status": "success", "message": f"Processed {len(devices_in)} devices successfully."}
+
 @app.post("/api/discovery/scan")
 async def trigger_subnet_scan(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     """
     Runs a subnet scan synchronously and returns discovered online devices.
+    Bug 9 fix: Auto-detects local subnet instead of hardcoded 192.168.1
     """
     logger.info("Subnet scan triggered synchronously.")
     try:
-        results = await run_discovery_scan("192.168.1")
+        # Auto-detect subnet from server's local network interface
+        subnet_prefix = detect_local_subnet()
+        logger.info(f"Auto-detected subnet for scan: {subnet_prefix}.0/24")
+        results = await run_discovery_scan(subnet_prefix)
         
         # Check against database
         existing_devices = db.query(Device).all()
@@ -476,35 +512,7 @@ async def trigger_subnet_scan(current_user: User = Depends(require_admin), db: S
         logger.error(f"Discovery scan failed: {e}")
         raise HTTPException(status_code=500, detail=f"Discovery scan failed: {str(e)}")
 
-@app.post("/api/devices/batch")
-def add_batch_devices(devices_in: List[BatchDeviceItem], current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    """
-    Registers or updates a batch of devices from discovery scan selections.
-    """
-    for item in devices_in:
-        device = db.query(Device).filter(Device.ip_address == item.ip_address).first()
-        if device:
-            device.name = item.name
-            device.category = item.category
-            device.location = item.location or "Unknown"
-            device.show_on_map = item.show_on_map
-            if item.mac_address and item.mac_address != "unknown":
-                device.mac_address = item.mac_address
-        else:
-            new_device = Device(
-                ip_address=item.ip_address,
-                mac_address=item.mac_address,
-                name=item.name,
-                category=item.category,
-                location=item.location or "Unknown",
-                show_on_map=item.show_on_map,
-                status="online"
-            )
-            db.add(new_device)
-            
-    db.commit()
-    log_audit(db, current_user, "BATCH_DEVICES_SAVED", f"Processed and saved batch of {len(devices_in)} devices.")
-    return {"status": "success", "message": f"Processed {len(devices_in)} devices successfully."}
+# (Removed duplicate /api/devices/batch - now registered before /{device_id} above)
 
 # Mount built frontend SPA static files if available
 from fastapi.responses import HTMLResponse

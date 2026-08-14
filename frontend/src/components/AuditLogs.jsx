@@ -27,7 +27,7 @@ export default function AuditLogs() {
     const term = searchTerm.toLowerCase();
     return (
       (log.username && log.username.toLowerCase().includes(term)) ||
-      log.action.toLowerCase().includes(term) ||
+      (log.action && log.action.toLowerCase().includes(term)) ||
       (log.details && log.details.toLowerCase().includes(term))
     );
   });

@@ -258,9 +258,9 @@ export default function TopologyMap({ devices, onNodeClick }) {
                     alignItems: 'center',
                     gap: '4px',
                     whiteSpace: 'nowrap'
-                  }} title={`Download: ${node.rx_mbps || 14.5} Mbps / Upload: ${node.tx_mbps || 4.2} Mbps`}>
-                    <span>↓{node.rx_mbps !== undefined && node.rx_mbps !== null ? node.rx_mbps.toFixed(1) : (node.category === 'Switch' ? '128.4' : '14.5')}M</span>
-                    <span>↑{node.tx_mbps !== undefined && node.tx_mbps !== null ? node.tx_mbps.toFixed(1) : (node.category === 'Switch' ? '84.1' : '4.2')}M</span>
+                   }} title={`Download: ${node.rx_mbps ?? 0} Mbps / Upload: ${node.tx_mbps ?? 0} Mbps`}>
+                    <span>↓{node.rx_mbps != null ? node.rx_mbps.toFixed(1) : '0.0'}M</span>
+                    <span>↑{node.tx_mbps != null ? node.tx_mbps.toFixed(1) : '0.0'}M</span>
                   </div>
                 )}
               </div>

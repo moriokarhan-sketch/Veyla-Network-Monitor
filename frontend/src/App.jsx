@@ -124,10 +124,17 @@ function App() {
       // Keep selected device synced in sidepanel if open
       if (selectedDevice) {
         const updated = data.find(d => d.id === selectedDevice.id);
-        if (updated) setSelectedDevice(updated);
+        if (updated) {
+          setSelectedDevice(updated);
+        } else {
+          // Device was deleted by another user - close the side panel
+          setSelectedDevice(null);
+          setIsPanelOpen(false);
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load devices:', err);
+      // Don't clear existing devices on poll error - keeps last known state visible
     } finally {
       setLoadingDevices(false);
     }

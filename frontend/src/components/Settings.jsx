@@ -62,8 +62,14 @@ export default function Settings({ currentUser }) {
     setSavingSettings(true);
     setSettingsStatus('');
     try {
-      await Promise.all(settings.map(s => api.updateSetting(s.key, s.value)));
-      setSettingsStatus('Settings saved successfully!');
+      // Bug fix: Use Promise.allSettled so a failure in one setting doesn't abort others
+      const results = await Promise.allSettled(settings.map(s => api.updateSetting(s.key, s.value)));
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length === 0) {
+        setSettingsStatus('Settings saved successfully!');
+      } else {
+        setSettingsStatus(`Saved with ${failed.length} error(s). Please check your inputs.`);
+      }
       setTimeout(() => setSettingsStatus(''), 3000);
     } catch (err) {
       setSettingsStatus('Error saving settings: ' + err.message);
@@ -109,7 +115,8 @@ export default function Settings({ currentUser }) {
     setEditUsername(user.username);
     setEditPassword('');
     setEditRole(user.role);
-    setEditIsActive(user.is_active);
+    // Bug fix: Default to false if is_active is undefined (legacy records)
+    setEditIsActive(user.is_active ?? false);
     setEditError('');
   };
 

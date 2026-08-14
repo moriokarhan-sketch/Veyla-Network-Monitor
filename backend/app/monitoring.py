@@ -31,7 +31,7 @@ def get_ping_latency_sync(ip: str, is_windows: bool) -> tuple[bool, Optional[flo
         cmd = ["ping", "-c", "1", "-W", "1", ip]
         
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=1.5)
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
         output = res.stdout
         
         if res.returncode == 0:
@@ -101,12 +101,13 @@ async def fetch_snmp_telemetry(device: Device) -> Dict[str, Any]:
         "raw_metrics": {}
     }
     
+    # Bug 12 fix: Handle None category safely
+    category_lower = (device.category or "").lower()
+    
     # 1. Fetch System Uptime (Standard RFC1213 OID: 1.3.6.1.2.1.1.3.0)
     uptime_val = await query_snmp_value(device.ip_address, community, "1.3.6.1.2.1.1.3.0")
     if uptime_val:
         telemetry["uptime"] = str(uptime_val)
-        
-    category_lower = device.category.lower()
     
     if "switch" in category_lower:
         # standard Switch PoE and port check
@@ -186,6 +187,9 @@ async def poll_device(db: Session, device: Device):
     old_status = device.status
     now = datetime.utcnow()
     
+    # Bug 12 fix: Safe category handling
+    category_lower = (device.category or "").lower()
+    
     # Process ping logs
     log = PingLog(
         device_id=device.id,
@@ -199,24 +203,23 @@ async def poll_device(db: Session, device: Device):
         device.last_seen = now
         device.last_latency = latency
         
-        # Calculate dynamic active traffic (Mbps) if zero
+        # Calculate dynamic active traffic (Mbps) if zero/offline
         if not device.rx_mbps or device.rx_mbps == 0.0:
-            cat_lower = device.category.lower()
-            if "switch" in cat_lower:
+            if "switch" in category_lower:
                 device.rx_mbps, device.tx_mbps = 128.4, 84.1
-            elif "router" in cat_lower:
+            elif "router" in category_lower:
                 device.rx_mbps, device.tx_mbps = 45.2, 18.7
-            elif "cctv" in cat_lower:
+            elif "cctv" in category_lower:
                 device.rx_mbps, device.tx_mbps = 0.1, 8.4
-            elif "pos" in cat_lower:
+            elif "pos" in category_lower:
                 device.rx_mbps, device.tx_mbps = 1.2, 0.4
-            elif "printer" in cat_lower:
+            elif "printer" in category_lower:
                 device.rx_mbps, device.tx_mbps = 0.3, 0.1
             else:  # PC / Laptop / KDS / Other
                 device.rx_mbps, device.tx_mbps = 15.8, 5.4
         
         # Determine status (Online vs Warning due to high latency)
-        if latency > settings.WARNING_LATENCY_MS:
+        if latency and latency > settings.WARNING_LATENCY_MS:
             device.status = "warning"
             status_desc = f"High Latency: {latency:.1f}ms (threshold: {settings.WARNING_LATENCY_MS}ms)"
         else:
@@ -233,7 +236,7 @@ async def poll_device(db: Session, device: Device):
     
     # Evaluate Alerting Rules
     # Rule 1: CRITICAL alerts (POS, Router, KDS goes offline)
-    is_critical_cat = device.category.upper() in ["ROUTER", "POS", "MONITOR KDS"]
+    is_critical_cat = (device.category or "").upper() in ["ROUTER", "POS", "MONITOR KDS"]
     
     if device.status == "offline" and old_status != "offline":
         # Transitioning to offline
@@ -257,19 +260,40 @@ async def poll_device(db: Session, device: Device):
 async def monitoring_daemon_loop(db_session_factory):
     """
     Periodic monitoring loop (runs every 10 seconds).
+    Bug 2+5 fix: Each device gets its own db session, and sessions are always closed.
     """
     logger.info("Starting Veyla Network Monitoring Engine Loop...")
     while True:
+        db = None
         try:
             db = db_session_factory()
             devices = db.query(Device).all()
-            
-            # Poll all devices concurrently
-            tasks = [poll_device(db, device) for device in devices]
-            await asyncio.gather(*tasks)
-            
+            # Load device IDs to avoid holding db open during concurrent polling
+            device_ids = [d.id for d in devices]
             db.close()
+            db = None
+            
+            # Poll each device with its own isolated db session
+            async def poll_with_own_session(device_id: int):
+                session = db_session_factory()
+                try:
+                    device = session.query(Device).filter(Device.id == device_id).first()
+                    if device:
+                        await poll_device(session, device)
+                except Exception as e:
+                    logger.error(f"Error polling device {device_id}: {e}")
+                    session.rollback()
+                finally:
+                    session.close()
+            
+            # Poll all devices concurrently with isolated sessions
+            tasks = [poll_with_own_session(did) for did in device_ids]
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
         except Exception as e:
             logger.error(f"Error in monitoring loop: {e}")
+        finally:
+            if db is not None:
+                db.close()
             
         await asyncio.sleep(10)  # Polling interval

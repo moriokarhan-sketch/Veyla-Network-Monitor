@@ -18,12 +18,13 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
   const loadTelemetryAndLogs = async () => {
     setLoadingTelemetry(true);
     try {
-      const [telData, logData] = await Promise.all([
+      // Bug fix: Use Promise.allSettled so one failure doesn't block the other
+      const [telResult, logResult] = await Promise.allSettled([
         api.getDeviceTelemetry(device.id),
         api.getPingLogs(device.id, 12) // Get last 12 hours of ping logs
       ]);
-      setTelemetry(telData);
-      setPingLogs(logData);
+      if (telResult.status === 'fulfilled') setTelemetry(telResult.value);
+      if (logResult.status === 'fulfilled') setPingLogs(logResult.value);
     } catch (err) {
       console.error("Error loading panel data:", err);
     } finally {
@@ -54,10 +55,11 @@ export default function SidePanel({ isOpen, device, onClose, onMuteUpdate }) {
 
   const getTrafficValues = (dev) => {
     if (!dev || dev.status === 'offline') return { rx: '0.0', tx: '0.0' };
+    // Bug fix: Use nullish coalescing so true 0 Mbps is shown, not masked by fallback
     const rawRx = dev.rx_mbps;
     const rawTx = dev.tx_mbps;
-    const rxNum = (typeof rawRx === 'number' && !isNaN(rawRx) && rawRx > 0) ? rawRx : (dev.category === 'Switch' ? 128.4 : (dev.category === 'Router' ? 45.2 : (dev.category === 'CCTV' ? 0.1 : 15.8)));
-    const txNum = (typeof rawTx === 'number' && !isNaN(rawTx) && rawTx > 0) ? rawTx : (dev.category === 'Switch' ? 84.1 : (dev.category === 'Router' ? 18.7 : (dev.category === 'CCTV' ? 8.4 : 5.4)));
+    const rxNum = (typeof rawRx === 'number' && !isNaN(rawRx)) ? rawRx : 0;
+    const txNum = (typeof rawTx === 'number' && !isNaN(rawTx)) ? rawTx : 0;
     return { rx: rxNum.toFixed(1), tx: txNum.toFixed(1) };
   };
 
