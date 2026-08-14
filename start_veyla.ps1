@@ -7,18 +7,22 @@ Write-Host '========================================================' -Foregroun
 $BaseDir = $PSScriptRoot
 Set-Location "$BaseDir\backend"
 
-# 1. Force remove old developer venv if copied from another PC
+# 1. Force remove old developer venv if copied from another PC or corrupted
 if (Test-Path "venv") {
     $cfgFile = "$BaseDir\backend\venv\pyvenv.cfg"
     $isInvalid = $true
     if (Test-Path $cfgFile) {
         $cfgText = Get-Content $cfgFile -Raw
         if ($cfgText -notlike "*boboh*" -and (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
-            $isInvalid = $false
+            # Check if python in venv actually runs
+            $testRun = & "$BaseDir\backend\venv\Scripts\python.exe" -c "print('OK')" 2>$null
+            if ($testRun -eq 'OK') {
+                $isInvalid = $false
+            }
         }
     }
     if ($isInvalid) {
-        Write-Host '[Fix] Purging old virtualenv copied from developer PC...' -ForegroundColor Yellow
+        Write-Host '[Fix] Purging invalid or copied virtualenv...' -ForegroundColor Yellow
         Remove-Item -Recurse -Force "venv" -ErrorAction SilentlyContinue
     }
 }
@@ -43,9 +47,11 @@ if (-not $PythonExe) {
         "$env:LocalAppData\Programs\Python\Python312\python.exe",
         "$env:LocalAppData\Programs\Python\Python311\python.exe",
         "$env:LocalAppData\Programs\Python\Python310\python.exe",
+        "$env:LocalAppData\Programs\Python\Python313\python.exe",
         "C:\Program Files\Python312\python.exe",
         "C:\Program Files\Python311\python.exe",
         "C:\Program Files\Python310\python.exe",
+        "C:\Program Files\Python313\python.exe",
         "C:\Python312\python.exe",
         "C:\Python311\python.exe",
         "C:\Python310\python.exe"
@@ -80,14 +86,14 @@ if (-not $PythonExe) {
         } catch {
             Write-Host '[ERROR] Auto download failed. Please download Python manually from:' -ForegroundColor Red
             Write-Host '  https://www.python.org/downloads/' -ForegroundColor Cyan
-            Write-Host 'IMPORTANT: Check the box Add Python.exe to PATH' -ForegroundColor Yellow
+            Write-Host 'IMPORTANT: Check the box "Add Python.exe to PATH"' -ForegroundColor Yellow
             Read-Host 'Press Enter to exit...'
             exit
         }
     } else {
         Write-Host 'Please download and install Python manually from:' -ForegroundColor Yellow
         Write-Host '  https://www.python.org/downloads/' -ForegroundColor Cyan
-        Write-Host 'IMPORTANT: Check the box Add Python.exe to PATH' -ForegroundColor Yellow
+        Write-Host 'IMPORTANT: Check the box "Add Python.exe to PATH"' -ForegroundColor Yellow
         Read-Host 'Press Enter to exit...'
         exit
     }
@@ -96,6 +102,7 @@ if (-not $PythonExe) {
 Write-Host "[OK] Located Real Python: $PythonExe" -ForegroundColor Green
 
 # 3. Create fresh venv on Server if missing
+$venvPython = "$BaseDir\backend\venv\Scripts\python.exe"
 if (-not (Test-Path "venv")) {
     Write-Host '[Setup] Creating fresh Python virtual environment on Server...' -ForegroundColor Cyan
     if ($PythonExe -eq 'py -3') {
@@ -104,28 +111,82 @@ if (-not (Test-Path "venv")) {
         & $PythonExe -m venv venv
     }
     
-    if (-not (Test-Path "$BaseDir\backend\venv\Scripts\python.exe")) {
+    if (-not (Test-Path $venvPython)) {
         Write-Host '[ERROR] Failed to create virtual environment.' -ForegroundColor Red
         Read-Host 'Press Enter to exit...'
         exit
     }
 }
 
-# 4. Always verify backend dependencies are installed
-Write-Host '[Setup] Verifying required backend packages...' -ForegroundColor Cyan
-& "$BaseDir\backend\venv\Scripts\python.exe" -m pip install -r "$BaseDir\backend\requirements.txt"
-& "$BaseDir\backend\venv\Scripts\python.exe" -m pip install pydantic-settings python-jose cryptography requests python-multipart pysnmp-lextudio
+# 4. Ensure pip/wheel are upgraded and install pre-compiled binary packages
+Write-Host '[Setup] Upgrading pip to ensure binary wheel support...' -ForegroundColor Cyan
+& "$venvPython" -m pip install --upgrade pip setuptools wheel --no-warn-script-location --quiet
 
-# 4. Start Backend Uvicorn Server
+Write-Host '[Setup] Installing/Verifying backend dependencies (using pre-compiled binary packages)...' -ForegroundColor Cyan
+& "$venvPython" -m pip install --prefer-binary -r "$BaseDir\backend\requirements.txt" --no-warn-script-location
+
+# Verify critical imports
+$verifyOk = $false
+try {
+    $testResult = & "$venvPython" -c "import fastapi, uvicorn, sqlalchemy, pydantic, pydantic_settings, jose, bcrypt; print('ALL_MODULES_OK')" 2>$null
+    if ($testResult -like "*ALL_MODULES_OK*") {
+        $verifyOk = $true
+    }
+} catch {}
+
+if (-not $verifyOk) {
+    Write-Host '[Warning] Retrying binary installation for missing modules...' -ForegroundColor Yellow
+    & "$venvPython" -m pip install --prefer-binary fastapi uvicorn sqlalchemy "pydantic>=2.7.0" pydantic-settings python-jose cryptography requests python-multipart pysnmp-lextudio bcrypt --no-warn-script-location
+}
+
+Write-Host '[OK] Backend dependencies verified successfully.' -ForegroundColor Green
+
+# 5. Start Backend Uvicorn Server
 Write-Host 'Starting Veyla Server on Port 8000...' -ForegroundColor Green
-$venvPython = "$BaseDir\backend\venv\Scripts\python.exe"
-Start-Process powershell -ArgumentList "-NoExit -Command `"Set-Location '$BaseDir\backend'; & '$venvPython' -m uvicorn app.main:app --host 0.0.0.0 --port 8000`""
 
-Start-Sleep -Seconds 4
+# Kill any lingering process on port 8000 first
+try {
+    $portUsers = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
+    if ($portUsers) {
+        foreach ($conn in $portUsers) {
+            Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
+    }
+} catch {}
 
-# 5. Open Web Panel
-Write-Host 'Opening Veyla Web Panel at http://localhost:8000 ...' -ForegroundColor Cyan
-Start-Process 'http://localhost:8000'
+Start-Process powershell -ArgumentList "-NoExit -Command `"Set-Location '$BaseDir\backend'; Write-Host 'Veyla Backend API Server Running on Port 8000...' -ForegroundColor Green; & '$venvPython' -m uvicorn app.main:app --host 0.0.0.0 --port 8000`""
+
+# 6. Wait for Server to be ready before opening browser (poll up to 15 seconds)
+Write-Host 'Waiting for Veyla Server to initialize...' -ForegroundColor Cyan
+$serverReady = $false
+for ($i = 1; $i -le 15; $i++) {
+    Start-Sleep -Seconds 1
+    try {
+        $res = Invoke-WebRequest -Uri 'http://localhost:8000/api/devices' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
+        if ($res -and ($res.StatusCode -eq 200 -or $res.StatusCode -eq 401)) {
+            $serverReady = $true
+            break
+        }
+    } catch {
+        # Check if root responds
+        try {
+            $res2 = Invoke-WebRequest -Uri 'http://localhost:8000' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
+            if ($res2 -and $res2.StatusCode -eq 200) {
+                $serverReady = $true
+                break
+            }
+        } catch {}
+    }
+}
+
+if ($serverReady) {
+    Write-Host '[OK] Veyla Server is responding!' -ForegroundColor Green
+    Write-Host 'Opening Veyla Web Panel at http://localhost:8000 ...' -ForegroundColor Cyan
+    Start-Process 'http://localhost:8000'
+} else {
+    Write-Host '[Notice] Opening browser at http://localhost:8000 ...' -ForegroundColor Yellow
+    Start-Process 'http://localhost:8000'
+}
 
 Write-Host '========================================================' -ForegroundColor Cyan
 Write-Host '  Veyla Network Monitoring System is RUNNING!' -ForegroundColor Green
